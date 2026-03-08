@@ -12,6 +12,9 @@ type ApiResponse = {
 export class MediaWikiClient {
   public readonly apiBaseUrl: string;
   public readonly webBaseUrl: string;
+  private readonly maxRetries = 6;
+  private readonly baseBackoffMs = 400;
+  private readonly maxBackoffMs = 15_000;
 
   constructor(domain: string, protocol: "http" | "https" = "https") {
     this.apiBaseUrl = `${protocol}://${domain}/w/api.php`;
@@ -124,16 +127,67 @@ export class MediaWikiClient {
 
   private async fetchJson(params: URLSearchParams): Promise<ApiResponse> {
     const url = `${this.apiBaseUrl}?${params.toString()}`;
-    const response = await fetch(url, {
-      headers: {
-        "user-agent": "doomwiki-sitemap-generator/2.0 (+https://doomwiki.org)",
-      },
-    });
 
-    if (!response.ok) {
-      throw new Error(`MediaWiki API error ${response.status} ${response.statusText} for ${url}`);
+    for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            "user-agent": "doomwiki-sitemap-generator/2.0 (+https://doomwiki.org)",
+          },
+        });
+
+        if (response.ok) {
+          return (await response.json()) as ApiResponse;
+        }
+
+        const retryable = response.status === 429 || response.status === 503 || response.status === 502;
+        if (retryable && attempt < this.maxRetries) {
+          const waitMs = this.getRetryDelayMs(response.headers.get("retry-after"), attempt);
+          await delay(waitMs);
+          continue;
+        }
+
+        const nonRetryableError = new Error(
+          `MediaWiki API error ${response.status} ${response.statusText} for ${url}`,
+        );
+        nonRetryableError.name = "NonRetryableHttpError";
+        throw nonRetryableError;
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === "NonRetryableHttpError") {
+          throw error;
+        }
+
+        const isLastAttempt = attempt >= this.maxRetries;
+        if (isLastAttempt) {
+          throw error instanceof Error ? error : new Error(String(error));
+        }
+
+        const waitMs = this.getRetryDelayMs(undefined, attempt);
+        await delay(waitMs);
+      }
     }
 
-    return (await response.json()) as ApiResponse;
+    throw new Error(`MediaWiki API request exhausted retries for ${url}`);
+  }
+
+  private getRetryDelayMs(retryAfterHeader: string | null | undefined, attempt: number): number {
+    if (retryAfterHeader) {
+      const retrySeconds = Number(retryAfterHeader);
+      if (Number.isFinite(retrySeconds) && retrySeconds >= 0) {
+        return Math.min(this.maxBackoffMs, retrySeconds * 1000);
+      }
+
+      const retryAt = Date.parse(retryAfterHeader);
+      if (!Number.isNaN(retryAt)) {
+        const delta = retryAt - Date.now();
+        if (delta > 0) {
+          return Math.min(this.maxBackoffMs, delta);
+        }
+      }
+    }
+
+    const expBackoff = this.baseBackoffMs * 2 ** attempt;
+    const jitter = Math.floor(Math.random() * 250);
+    return Math.min(this.maxBackoffMs, expBackoff + jitter);
   }
 }
