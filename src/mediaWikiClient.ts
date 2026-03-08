@@ -126,7 +126,7 @@ export class MediaWikiClient {
     const url = `${this.apiBaseUrl}?${params.toString()}`;
     const response = await fetch(url, {
       headers: {
-        "user-agent": "doomwiki-sitemap/2.0 (+https://doomwiki.org)",
+        "user-agent": "doomwiki-sitemap-generator/2.0 (+https://doomwiki.org)",
       },
     });
 
