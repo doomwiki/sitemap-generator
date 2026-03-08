@@ -1,0 +1,23 @@
+{
+  "name": "doomwiki-sitemap",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Node/TypeScript sitemap generator for DoomWiki",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "start:ts": "node index.ts",
+    "run:sample": "npm run build && node dist/index.js --max-pages 20 --sleep-ms 0 --out-dir output/sample",
+    "run:sample:ts": "node index.ts --max-pages 20 --sleep-ms 0 --out-dir output/sample-ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.3"
+  }
+}
